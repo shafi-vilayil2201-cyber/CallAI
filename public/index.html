@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CallAI - Developer Voice Testing Terminal</title>
+  
+  <!-- Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  
+  <!-- Socket.io -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+  <style>
+    :root {
+      --bg-dark: #090b11;
+      --card-bg: rgba(17, 20, 32, 0.7);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --primary: #4f46e5;
+      --primary-glow: rgba(79, 70, 229, 0.3);
+      --success: #10b981;
+      --success-glow: rgba(16, 185, 129, 0.2);
+      --warning: #f59e0b;
+      --error: #ef4444;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: radial-gradient(circle at top right, #1e1b4b, var(--bg-dark) 60%);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+      overflow-x: hidden;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2rem;
+      max-width: 600px;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #a5b4fc, #818cf8, #4f46e5);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.025em;
+    }
+
+    p.subtitle {
+      color: var(--text-muted);
+      font-size: 1rem;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 900px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 1.25rem;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 0.5rem;
+    }
+
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 0.35rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .form-control {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 0.75rem;
+      color: var(--text-main);
+      font-family: inherit;
+      font-size: 0.9rem;
+      transition: all 0.2s ease;
+    }
+
+    .form-control:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-glow);
+    }
+
+    .btn {
+      width: 100%;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 0.85rem;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      box-shadow: 0 4px 12px var(--primary-glow);
+    }
+
+    .btn:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    .btn-danger {
+      background: var(--error);
+      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+
+    /* Terminal Console Style */
+    .terminal {
+      background: rgba(5, 5, 10, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      padding: 1rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      height: 300px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.5);
+    }
+
+    .log-line {
+      line-height: 1.4;
+    }
+
+    .log-info { color: var(--text-muted); }
+    .log-success { color: var(--success); }
+    .log-warning { color: var(--warning); }
+    .log-error { color: var(--error); }
+
+    /* Visualizer Ring */
+    .visualizer-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      min-height: 250px;
+      position: relative;
+    }
+
+    .orb {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #818cf8 0%, #4f46e5 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 40px var(--primary-glow);
+      position: relative;
+      z-index: 2;
+      transition: all 0.3s ease;
+    }
+
+    .orb.speaking {
+      background: radial-gradient(circle, #34d399 0%, #10b981 100%);
+      box-shadow: 0 0 40px var(--success-glow);
+      transform: scale(1.05);
+    }
+
+    .pulse-ring {
+      position: absolute;
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      border: 2px solid var(--primary);
+      opacity: 0;
+      z-index: 1;
+      animation: none;
+    }
+
+    .orb.speaking + .pulse-ring {
+      border-color: var(--success);
+      animation: pulse 1.5s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+    }
+
+    @keyframes pulse {
+      0% {
+        transform: scale(1);
+        opacity: 0.6;
+      }
+      100% {
+        transform: scale(1.8);
+        opacity: 0;
+      }
+    }
+
+    .status-badge {
+      margin-top: 1.5rem;
+      padding: 0.35rem 0.85rem;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-muted);
+    }
+
+    .status-badge.connected {
+      color: var(--success);
+      background: rgba(16, 185, 129, 0.08);
+      border-color: rgba(16, 185, 129, 0.2);
+    }
+    .status-badge.connected .status-dot {
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+    }
+
+    .status-badge.listening {
+      color: #3b82f6;
+      background: rgba(59, 130, 246, 0.08);
+      border-color: rgba(59, 130, 246, 0.2);
+    }
+    .status-badge.listening .status-dot {
+      background: #3b82f6;
+      box-shadow: 0 0 8px #3b82f6;
+    }
+
+    .transcript-box {
+      margin-top: 1rem;
+      padding: 0.75rem;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      font-size: 0.85rem;
+      min-height: 50px;
+      max-height: 100px;
+      overflow-y: auto;
+      color: var(--text-muted);
+    }
+
+    /* Steps card */
+    .steps-card {
+      grid-column: span 2;
+    }
+    @media (max-width: 768px) {
+      .steps-card {
+        grid-column: span 1;
+      }
+    }
+
+    .steps-list {
+      list-style-type: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      font-size: 0.9rem;
+    }
+
+    .steps-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+    }
+
+    .step-number {
+      background: var(--primary);
+      color: white;
+      font-weight: 700;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      flex-shrink: 0;
+    }
+
+    .code-block {
+      background: rgba(0, 0, 0, 0.4);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', monospace;
+      color: #a5b4fc;
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>CallAI Developer Sandbox</h1>
+    <p class="subtitle">Mock phone calls and stream real-time microphone audio directly to the NestJS Voice Gateway for immediate interactive testing.</p>
+  </header>
+
+  <div class="container">
+
+    <!-- Controls Card -->
+    <div class="card">
+      <div class="card-title">
+        <span>⚙️ Session Configurations</span>
+      </div>
+      
+      <div class="form-group">
+        <label for="apiUrl">NestJS API Endpoint</label>
+        <input type="text" id="apiUrl" class="form-control" value="http://localhost:3000">
+      </div>
+
+      <div class="form-group">
+        <label for="fromNumber">Caller Number (Mock)</label>
+        <input type="text" id="fromNumber" class="form-control" value="+919999999999">
+      </div>
+
+      <div class="form-group" style="margin-bottom: 1.5rem;">
+        <label for="toNumber">Receiver Number (Mock Router test)</label>
+        <input type="text" id="toNumber" class="form-control" value="+918888888888">
+        <small style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-top: 0.25rem;">
+          Starts with <span class="code-block">+91</span> routes to ExotelProvider mockup, others to Twilio.
+        </small>
+      </div>
+
+      <div style="display: flex; gap: 0.75rem; margin-top: auto;">
+        <button id="startBtn" class="btn">🚀 Start Sandbox Call</button>
+        <button id="hangupBtn" class="btn btn-danger" disabled>❌ Hang Up</button>
+      </div>
+    </div>
+
+    <!-- Live Interaction Card -->
+    <div class="card">
+      <div class="card-title">
+        <span>🎙️ Live Stream Status</span>
+      </div>
+
+      <div class="visualizer-container">
+        <div id="statusOrb" class="orb">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" fill="white"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/>
+          </svg>
+        </div>
+        <div class="pulse-ring"></div>
+
+        <div id="statusBadge" class="status-badge">
+          <div class="status-dot"></div>
+          <span id="statusText">Disconnected</span>
+        </div>
+      </div>
+
+      <div class="transcript-box" id="liveTranscript">
+        AI responses will be transcribed here in real-time...
+      </div>
+    </div>
+
+    <!-- Console Log Card -->
+    <div class="card" style="grid-column: span 2;">
+      <div class="card-title">
+        <span>🖥️ Sandbox Debug Terminal</span>
+      </div>
+      <div id="terminal" class="terminal">
+        <div class="log-line log-info">[System] Debug terminal initialized. Ready for connections.</div>
+      </div>
+    </div>
+
+    <!-- Setup Guide Card -->
+    <div class="card steps-card">
+      <div class="card-title">
+        <span>📖 Local Testing Instructions</span>
+      </div>
+      <ul class="steps-list">
+        <li>
+          <span class="step-number">1</span>
+          <div>
+            Ensure your local database is initialized and seeded. Open a terminal in the root and run:
+            <span class="code-block">npx prisma migrate dev && npx prisma db seed</span>
+          </div>
+        </li>
+        <li>
+          <span class="step-number">2</span>
+          <div>
+            Open a terminal and start the NestJS backend in development mode:
+            <span class="code-block">pnpm run start:dev</span>
+          </div>
+        </li>
+        <li>
+          <span class="step-number">3</span>
+          <div>
+            If testing the actual AI responses, ensure your <span class="code-block">OPENAI_API_KEY</span> is exported in your environment.
+          </div>
+        </li>
+        <li>
+          <span class="step-number">4</span>
+          <div>
+            Click <strong>Start Sandbox Call</strong> above. The browser will ask for microphone access, establish a real-time WebSocket connection to the gateway, and connect your mic!
+          </div>
+        </li>
+      </ul>
+    </div>
+
+  </div>
+
+  <script>
+    const apiUrlInput = document.getElementById('apiUrl');
+    const fromInput = document.getElementById('fromNumber');
+    const toInput = document.getElementById('toNumber');
+    const startBtn = document.getElementById('startBtn');
+    const hangupBtn = document.getElementById('hangupBtn');
+    
+    const statusOrb = document.getElementById('statusOrb');
+    const statusText = document.getElementById('statusText');
+    const statusBadge = document.getElementById('statusBadge');
+    
+    const liveTranscript = document.getElementById('liveTranscript');
+    const terminal = document.getElementById('terminal');
+
+    let socket = null;
+    let callSessionId = null;
+    let callSid = null;
+    
+    // Web Audio Variables
+    let audioContext = null;
+    let microphoneStream = null;
+    let processorNode = null;
+    let audioQueue = [];
+    let isPlaying = false;
+    let playInterval = null;
+
+    // Terminal Logger
+    function log(message, type = 'info') {
+      const line = document.createElement('div');
+      line.className = `log-line log-${type}`;
+      line.innerText = `[${new Date().toLocaleTimeString()}] ${message}`;
+      terminal.appendChild(line);
+      terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    // PCM16 to G.711 u-law Compression Algorithm
+    function linear2ulaw(sample) {
+      const BIAS = 0x84;
+      const CLIP = 32635;
+      let sign = (sample >> 16) & 0x80;
+      if (sample < 0) {
+        sample = -sample;
+        sign = 0x80;
+      }
+      if (sample > CLIP) sample = CLIP;
+      sample = sample + BIAS;
+      let exponent = 7;
+      for (let mask = 0x4000; (sample & mask) === 0; exponent--) {
+        mask >>= 1;
+      }
+      let mantissa = (sample >> (exponent + 3)) & 0x0F;
+      let val = (sign | (exponent << 4) | mantissa);
+      return val ^ 0xFF;
+    }
+
+    // G.711 u-law to PCM16 Expansion Algorithm
+    function ulaw2linear(mu) {
+      mu = ~mu;
+      let sign = mu & 0x80;
+      let exponent = (mu >> 4) & 0x07;
+      let mantissa = mu & 0x0F;
+      let sample = ((mantissa << 3) + 132) << exponent;
+      sample -= 132;
+      return sign ? -sample : sample;
+    }
+
+    // Start Recording and Streaming
+    async function startAudioStreaming() {
+      try {
+        log('Requesting microphone permissions...', 'info');
+        microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        // Use standard AudioContext at 8000Hz or downsample
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const sampleRate = audioContext.sampleRate;
+        log(`Microphone captured. Native sample rate: ${sampleRate}Hz`, 'info');
+
+        const source = audioContext.createMediaStreamSource(microphoneStream);
+        
+        // Buffer size 2048, 1 input channel, 1 output channel
+        processorNode = audioContext.createScriptProcessor(2048, 1, 1);
+        source.connect(processorNode);
+        processorNode.connect(audioContext.destination);
+
+        let sequence = 0;
+        let downsampleRatio = sampleRate / 8000;
+        
+        processorNode.onaudioprocess = (e) => {
+          if (!socket || socket.disconnected) return;
+
+          const inputData = e.inputBuffer.getChannelData(0);
+          
+          // Downsample block to 8kHz
+          const targetLength = Math.round(inputData.length / downsampleRatio);
+          const ulawBytes = new Uint8Array(targetLength);
+
+          for (let i = 0; i < targetLength; i++) {
+            const sourceIndex = Math.round(i * downsampleRatio);
+            // Convert float PCM [-1.0, 1.0] to 16-bit integer [-32768, 32767]
+            const floatSample = inputData[sourceIndex];
+            const pcmSample = Math.max(-32768, Math.min(32767, floatSample * 32768));
+            ulawBytes[i] = linear2ulaw(pcmSample);
+          }
+
+          // Encode to Base64
+          const base64Payload = btoa(String.fromCharCode.apply(null, ulawBytes));
+
+          socket.emit('audio-in', {
+            payload: base64Payload,
+            sequence: sequence++,
+            timestamp: Date.now()
+          });
+        };
+
+        log('Microphone audio stream active and downsampling to G.711 u-law (8kHz).', 'success');
+        
+        // Setup Audio Playback loops
+        startAudioPlayback();
+      } catch (err) {
+        log(`Failed to initiate audio streaming: ${err.message}`, 'error');
+        hangUpCall();
+      }
+    }
+
+    // Queue and play response audio chunks
+    function startAudioPlayback() {
+      isPlaying = true;
+      
+      // Simple chunk player
+      playInterval = setInterval(() => {
+        if (audioQueue.length === 0 || !audioContext) return;
+        
+        const ulawBytes = audioQueue.shift();
+        const pcmFloatArray = new Float32Array(ulawBytes.length);
+
+        for (let i = 0; i < ulawBytes.length; i++) {
+          const linearPcm = ulaw2linear(ulawBytes[i]);
+          pcmFloatArray[i] = linearPcm / 32768; // scale back to Float32 [-1, 1]
+        }
+
+        // Create buffer and play
+        const audioBuffer = audioContext.createBuffer(1, pcmFloatArray.length, 8000); // G.711 is 8kHz
+        audioBuffer.copyToChannel(pcmFloatArray, 0);
+
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioContext.destination);
+        source.start();
+      }, 250); // Tick every 250ms
+    }
+
+    // Trigger Sandbox Session
+    startBtn.onclick = async () => {
+      const apiBase = apiUrlInput.value.trim();
+      const from = fromInput.value.trim();
+      const to = toInput.value.trim();
+
+      if (!apiBase) {
+        alert('Please specify backend API URL');
+        return;
+      }
+
+      startBtn.disabled = true;
+      hangupBtn.disabled = false;
+      
+      log(`Triggering inbound call registration webhook at ${apiBase}/v1/telephony/exotel/inbound...`, 'info');
+      callSid = 'call_mock_' + Math.random().toString(36).substring(7);
+
+      try {
+        const response = await fetch(`${apiBase}/v1/telephony/exotel/inbound`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            CallSid: callSid,
+            From: from,
+            To: to
+          })
+        });
+
+        const data = await response.json();
+        if (data.status !== 'success') {
+          throw new Error(data.reason || 'Telephony rejected call');
+        }
+
+        const wsUrl = data.instruction.url;
+        log(`Webhook registered session successfully! Action: ${data.instruction.action}`, 'success');
+        
+        // Parse websocket details
+        const urlObj = new URL(wsUrl);
+        callSessionId = urlObj.searchParams.get('callSessionId');
+        log(`Extracted callSessionId: ${callSessionId}`, 'info');
+
+        // Connect WebSocket
+        connectWebSocket(apiBase, callSessionId);
+      } catch (err) {
+        log(`Failed to initiate sandbox call: ${err.message}`, 'error');
+        hangUpCall();
+      }
+    };
+
+    function connectWebSocket(apiBase, sessionId) {
+      log(`Connecting to voice gateway stream websocket...`, 'info');
+      
+      // Initialize socket.io connection
+      socket = io(apiBase, {
+        path: '/v1/voice-stream',
+        query: {
+          token: 'bypass-auth',
+          callSessionId: sessionId
+        },
+        transports: ['websocket']
+      });
+
+      socket.on('connect', () => {
+        log('Voice Stream WebSocket connection established.', 'success');
+        statusText.innerText = 'Connected / Streaming';
+        statusBadge.className = 'status-badge connected';
+        statusOrb.className = 'orb';
+
+        // Trigger Audio capture
+        startAudioStreaming();
+      });
+
+      socket.on('disconnect', () => {
+        log('Voice Stream WebSocket disconnected.', 'warning');
+        hangUpCall();
+      });
+
+      socket.on('connect_error', (error) => {
+        log(`Connection Error: ${error.message}`, 'error');
+        hangUpCall();
+      });
+
+      socket.on('audio-out', (data) => {
+        // Queue base64 audio output chunks
+        const binaryString = atob(data.payload);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        audioQueue.push(bytes);
+      });
+
+      let responseText = '';
+      socket.on('audio-out-transcript', (text) => {
+        responseText += text;
+        liveTranscript.innerText = responseText;
+      });
+      
+      // Listen for text/events changes
+      socket.on('message', (event) => {
+        log(`Received Event: ${event.type}`, 'info');
+      });
+    }
+
+    // Stop and Reset Call
+    hangupBtn.onclick = () => {
+      hangUpCall();
+    };
+
+    async function hangUpCall() {
+      log('Hanging up sandbox call...', 'warning');
+      
+      // Stop Recording
+      if (processorNode) {
+        processorNode.disconnect();
+        processorNode = null;
+      }
+      if (microphoneStream) {
+        microphoneStream.getTracks().forEach(track => track.stop());
+        microphoneStream = null;
+      }
+      if (audioContext) {
+        audioContext.close();
+        audioContext = null;
+      }
+
+      // Stop Audio queue loop
+      if (playInterval) {
+        clearInterval(playInterval);
+        playInterval = null;
+      }
+      audioQueue = [];
+      isPlaying = false;
+
+      // Disconnect WS
+      if (socket) {
+        socket.disconnect();
+        socket = null;
+      }
+
+      // Tell Backend Exotel Status callback is completed
+      if (callSid) {
+        const apiBase = apiUrlInput.value.trim();
+        try {
+          await fetch(`${apiBase}/v1/telephony/exotel/status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              CallSid: callSid,
+              Status: 'completed'
+            })
+          });
+          log('Carrier status callback updated to: completed', 'info');
+        } catch (e) {}
+        callSid = null;
+      }
+
+      callSessionId = null;
+      startBtn.disabled = false;
+      hangupBtn.disabled = true;
+
+      statusText.innerText = 'Disconnected';
+      statusBadge.className = 'status-badge';
+      statusOrb.className = 'orb';
+      
+      log('Sandbox call cleared.', 'info');
+    }
+  </script>
+</body>
+</html>

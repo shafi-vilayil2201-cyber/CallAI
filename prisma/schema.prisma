@@ -1,0 +1,267 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  OPERATOR
+  DEVELOPER
+}
+
+enum CallStatus {
+  INITIATED
+  RINGING
+  ANSWERED
+  COMPLETED
+  FAILED
+}
+
+enum MessageRole {
+  SYSTEM
+  USER
+  ASSISTANT
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+}
+
+model Organization {
+  id                   String                 @id @default(uuid())
+  name                 String
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  users                User[]
+  apiKeys              ApiKey[]
+  webhooks             Webhook[]
+  assistants           Assistant[]
+  aiProviderConfigs    AiProviderConfig[]
+  callSessions         CallSession[]
+  settings             OrganizationSettings?
+  subscription         Subscription?
+  billing              Billing?
+  invoices             Invoice[]
+  usages               Usage[]
+}
+
+model OrganizationSettings {
+  id                String       @id @default(uuid())
+  organizationId    String       @unique
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recordingEnabled  Boolean      @default(true)
+  defaultLanguage   String       @default("en-US")
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+}
+
+model User {
+  id             String       @id @default(uuid())
+  email          String       @unique
+  passwordHash   String
+  role           Role         @default(OPERATOR)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  auditLogs      AuditLog[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+}
+
+model ApiKey {
+  id             String       @id @default(uuid())
+  name           String
+  keyHash        String       @unique
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+}
+
+model Webhook {
+  id             String       @id @default(uuid())
+  name           String
+  url            String
+  secret         String
+  eventTypes     String[]     // e.g., ["CallStarted", "CallEnded"]
+  isActive       Boolean      @default(true)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+}
+
+model FeatureFlag {
+  id                String   @id @default(uuid())
+  name              String   @unique // e.g., "ENABLE_NEW_AI"
+  description       String?
+  isEnabledGlobally Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model AiProviderConfig {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  providerName   String       // e.g., "openai", "gemini", "claude"
+  apiKey         String       // Encrypted
+  apiEndpoint    String?
+  isDefault      Boolean      @default(false)
+  assistants     Assistant[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, providerName])
+  @@index([organizationId])
+}
+
+model Assistant {
+  id                 String            @id @default(uuid())
+  name               String
+  systemInstruction  String            @db.Text
+  voiceId            String            // e.g., "alloy", "echo"
+  model              String            // e.g., "gpt-4o-realtime", "gemini-1.5-flash"
+  language           String            @default("en-US")
+  isPublished        Boolean           @default(false)
+  organizationId     String
+  organization       Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  aiProviderConfigId String
+  aiProviderConfig   AiProviderConfig  @relation(fields: [aiProviderConfigId], references: [id])
+  callSessions       CallSession[]
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([organizationId])
+}
+
+model CallSession {
+  id             String                @id @default(uuid())
+  status         CallStatus            @default(INITIATED)
+  callerNumber   String
+  receiverNumber String
+  providerCallId String?               @unique // Exotel or Twilio Sid
+  providerName   String                // e.g., "exotel", "twilio"
+  recordingUrl   String?
+  assistantId    String
+  assistant      Assistant             @relation(fields: [assistantId], references: [id])
+  organizationId String
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  messages       ConversationMessage[]
+  callCost       CallCost?
+  usages         Usage[]
+  startedAt      DateTime              @default(now())
+  endedAt        DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@index([organizationId])
+  @@index([providerCallId])
+}
+
+model CallCost {
+  id            String      @id @default(uuid())
+  callSessionId String      @unique
+  callSession   CallSession @relation(fields: [callSessionId], references: [id], onDelete: Cascade)
+  telephonyCost Float       @default(0.0)
+  speechCost    Float       @default(0.0)
+  llmCost       Float       @default(0.0)
+  voiceCost     Float       @default(0.0)
+  storageCost   Float       @default(0.0)
+  totalCost     Float       @default(0.0)
+  margin        Float       @default(0.0)
+  revenue       Float       @default(0.0)
+  currency      String      @default("USD")
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model ConversationMessage {
+  id            String      @id @default(uuid())
+  callSessionId String
+  callSession   CallSession @relation(fields: [callSessionId], references: [id], onDelete: Cascade)
+  role          MessageRole
+  content       String      @db.Text
+  audioKey      String?     // S3 Audio object key reference if individual turns are recorded
+  tokenCount    Int         @default(0)
+  cost          Float       @default(0.0)
+  latencyMs     Int         @default(0)
+  createdAt     DateTime    @default(now())
+
+  @@index([callSessionId])
+}
+
+model Subscription {
+  id                 String             @id @default(uuid())
+  organizationId     String             @unique
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  planName           String             // e.g., "STARTER", "ENTERPRISE"
+  status             SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+}
+
+model Billing {
+  id             String       @id @default(uuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stripeCustomerId String?
+  balance        Float        @default(0.0)
+  currency       String       @default("USD")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Invoice {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  amount         Float
+  status         String       // e.g., "PAID", "OPEN"
+  invoicePdfUrl  String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+}
+
+model Usage {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  callSessionId  String?
+  callSession    CallSession? @relation(fields: [callSessionId], references: [id])
+  resourceType   String       // e.g., "TELEPHONY_MINUTES", "LLM_TOKENS"
+  quantity       Float
+  cost           Float
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String   // e.g., "DELETE_ASSISTANT", "API_KEY_CREATED"
+  resource  String
+  details   String   @db.Text
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+}
