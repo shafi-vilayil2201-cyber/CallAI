@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   
   <!-- Socket.io -->
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="/v1/voice-stream/socket.io.js"></script>
 
   <style>
     :root {
@@ -544,42 +544,49 @@
     async function startAudioStreaming() {
       try {
         log('Requesting microphone permissions...', 'info');
-        microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        microphoneStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
         
-        // Use standard AudioContext at 8000Hz or downsample
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const sampleRate = audioContext.sampleRate;
-        log(`Microphone captured. Native sample rate: ${sampleRate}Hz`, 'info');
+        // Use native browser resampling to 24kHz directly
+        audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        log(`Microphone captured. AudioContext native sample rate: ${audioContext.sampleRate}Hz`, 'info');
 
         const source = audioContext.createMediaStreamSource(microphoneStream);
         
-        // Buffer size 2048, 1 input channel, 1 output channel
+        // Buffer size 2048 (more responsive than 4096)
         processorNode = audioContext.createScriptProcessor(2048, 1, 1);
         source.connect(processorNode);
         processorNode.connect(audioContext.destination);
 
         let sequence = 0;
-        let downsampleRatio = sampleRate / 8000;
         
         processorNode.onaudioprocess = (e) => {
           if (!socket || socket.disconnected) return;
 
           const inputData = e.inputBuffer.getChannelData(0);
           
-          // Downsample block to 8kHz
-          const targetLength = Math.round(inputData.length / downsampleRatio);
-          const ulawBytes = new Uint8Array(targetLength);
+          // Native rate is 24kHz, so we just convert float to Int16 PCM16 directly
+          const pcm16Buffer = new ArrayBuffer(inputData.length * 2);
+          const pcm16View = new DataView(pcm16Buffer);
 
-          for (let i = 0; i < targetLength; i++) {
-            const sourceIndex = Math.round(i * downsampleRatio);
-            // Convert float PCM [-1.0, 1.0] to 16-bit integer [-32768, 32767]
-            const floatSample = inputData[sourceIndex];
-            const pcmSample = Math.max(-32768, Math.min(32767, floatSample * 32768));
-            ulawBytes[i] = linear2ulaw(pcmSample);
+          for (let i = 0; i < inputData.length; i++) {
+            const floatSample = inputData[i];
+            const intSample = Math.max(-32768, Math.min(32767, Math.round(floatSample * 32767)));
+            pcm16View.setInt16(i * 2, intSample, true); // little-endian
           }
 
-          // Encode to Base64
-          const base64Payload = btoa(String.fromCharCode.apply(null, ulawBytes));
+          // Convert to base64
+          const bytes = new Uint8Array(pcm16Buffer);
+          let binary = '';
+          for (let i = 0; i < bytes.length; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          const base64Payload = btoa(binary);
 
           socket.emit('audio-in', {
             payload: base64Payload,
@@ -588,7 +595,7 @@
           });
         };
 
-        log('Microphone audio stream active and downsampling to G.711 u-law (8kHz).', 'success');
+        log('Microphone audio stream active - PCM16 at 24kHz.', 'success');
         
         // Setup Audio Playback loops
         startAudioPlayback();
@@ -598,31 +605,46 @@
       }
     }
 
-    // Queue and play response audio chunks
-    function startAudioPlayback() {
+    // Queue and play response audio chunks (PCM16 at 24kHz)
+    async function startAudioPlayback() {
       isPlaying = true;
       
-      // Simple chunk player
-      playInterval = setInterval(() => {
-        if (audioQueue.length === 0 || !audioContext) return;
+      playInterval = setInterval(async () => {
+        if (!audioContext) return;
         
-        const ulawBytes = audioQueue.shift();
-        const pcmFloatArray = new Float32Array(ulawBytes.length);
-
-        for (let i = 0; i < ulawBytes.length; i++) {
-          const linearPcm = ulaw2linear(ulawBytes[i]);
-          pcmFloatArray[i] = linearPcm / 32768; // scale back to Float32 [-1, 1]
+        if (audioQueue.length === 0) {
+          statusOrb.classList.remove('speaking');
+          return;
         }
 
-        // Create buffer and play
-        const audioBuffer = audioContext.createBuffer(1, pcmFloatArray.length, 8000); // G.711 is 8kHz
+        // Ensure audio context is active
+        if (audioContext.state === 'suspended') {
+          await audioContext.resume();
+        }
+
+        statusOrb.classList.add('speaking');
+        
+        const pcm16Bytes = audioQueue.shift();
+        const numSamples = Math.floor(pcm16Bytes.length / 2);
+        if (numSamples === 0) return;
+        
+        const pcmFloatArray = new Float32Array(numSamples);
+        const dataView = new DataView(pcm16Bytes.buffer, pcm16Bytes.byteOffset, pcm16Bytes.byteLength);
+        
+        for (let i = 0; i < numSamples; i++) {
+          const int16 = dataView.getInt16(i * 2, true); // little-endian
+          pcmFloatArray[i] = int16 / 32768;
+        }
+
+        // Create buffer at 24kHz and play
+        const audioBuffer = audioContext.createBuffer(1, pcmFloatArray.length, 24000);
         audioBuffer.copyToChannel(pcmFloatArray, 0);
 
-        const source = audioContext.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(audioContext.destination);
-        source.start();
-      }, 250); // Tick every 250ms
+        const bufferSource = audioContext.createBufferSource();
+        bufferSource.buffer = audioBuffer;
+        bufferSource.connect(audioContext.destination);
+        bufferSource.start();
+      }, 100); // Tick every 100ms for smoother playback
     }
 
     // Trigger Sandbox Session
@@ -709,6 +731,9 @@
         hangUpCall();
       });
 
+      let responseText = '';
+      let audioPacketCount = 0;
+      
       socket.on('audio-out', (data) => {
         // Queue base64 audio output chunks
         const binaryString = atob(data.payload);
@@ -718,10 +743,17 @@
           bytes[i] = binaryString.charCodeAt(i);
         }
         audioQueue.push(bytes);
+        
+        audioPacketCount++;
+        if (audioPacketCount % 20 === 1) {
+          log(`Receiving synthetic audio stream from AI... (${audioPacketCount} packets)`, 'success');
+        }
       });
 
-      let responseText = '';
       socket.on('audio-out-transcript', (text) => {
+        if (responseText === '') {
+          liveTranscript.innerText = '';
+        }
         responseText += text;
         liveTranscript.innerText = responseText;
       });

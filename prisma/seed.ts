@@ -73,7 +73,7 @@ async function main() {
       name: 'Realtime Voice Assistant',
       systemInstruction: 'You are CallAI customer service agent. Speak clearly, concisely, and keep your answers brief. Help the caller book an appointment or process a payment if they request.',
       voiceId: 'alloy',
-      model: 'gpt-4o-realtime',
+      model: 'gpt-realtime-2.1',
       language: 'en-US',
       isPublished: true,
       organizationId: org.id,

@@ -146,11 +146,11 @@ export class OpenAiRealtimeProvider implements AiProvider {
         modalities: ['text', 'audio'],
         instructions: config.systemInstruction,
         voice: config.voiceId, // e.g. "alloy", "shimmer", "echo"
-        input_audio_format: 'g711_ulaw', // Native telephony support!
-        output_audio_format: 'g711_ulaw',
+        input_audio_format: 'pcm16', // PCM16 at 24kHz for gpt-realtime-2.1
+        output_audio_format: 'pcm16',
         turn_detection: {
           type: 'server_vad',
-          threshold: 0.5,
+          threshold: 0.8,
           prefix_padding_ms: 300,
           silence_duration_ms: 500, // 500ms silence = user ended turn
         },

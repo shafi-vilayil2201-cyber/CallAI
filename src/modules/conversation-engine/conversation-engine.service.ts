@@ -35,7 +35,11 @@ export class ConversationEngineService {
     this.logger.setContext('ConversationEngine');
   }
 
-  async initializeSession(callSessionId: string, onAudioOut: (chunk: Buffer) => void): Promise<void> {
+  async initializeSession(
+    callSessionId: string,
+    onAudioOut: (chunk: Buffer) => void,
+    onTextOut?: (text: string) => void
+  ): Promise<void> {
     this.logger.log(`Initializing conversation engine state for call: ${callSessionId}`);
 
     // 1. Fetch Call Session & Assistant configurations
@@ -101,6 +105,9 @@ Ensure replies are extremely concise and natural for real-time voice conversatio
         },
         onTextDelta: (delta: string) => {
           activeSession.transcriptBuffer.push(delta);
+          if (onTextOut) {
+            onTextOut(delta);
+          }
         },
         onSpeechStarted: () => {
           // INTERRUPTION / BARGE-IN: User started speaking while AI was playing audio. Clear buffers!

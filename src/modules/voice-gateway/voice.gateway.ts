@@ -77,13 +77,20 @@ export class VoiceGateway implements OnGatewayConnection, OnGatewayDisconnect, O
 
     // 3. Initialize Conversation Engine for this call session
     try {
-      await this.conversationEngine.initializeSession(sessionIdStr, (aiAudio: Buffer) => {
-        // Send synthesized AI audio packets back to telephony carrier client
-        client.emit('audio-out', {
-          payload: aiAudio.toString('base64'),
-          timestamp: Date.now(),
-        });
-      });
+      await this.conversationEngine.initializeSession(
+        sessionIdStr,
+        (aiAudio: Buffer) => {
+          // Send synthesized AI audio packets back to telephony carrier client
+          client.emit('audio-out', {
+            payload: aiAudio.toString('base64'),
+            timestamp: Date.now(),
+          });
+        },
+        (text: string) => {
+          // Send text transcript stream delta back to web client
+          client.emit('audio-out-transcript', text);
+        }
+      );
     } catch (error) {
       this.logger.error(`Failed to initialize AI conversation for call ${sessionIdStr}`, error instanceof Error ? error.stack : undefined);
       client.disconnect(true);
