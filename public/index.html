@@ -499,6 +499,7 @@
     let audioQueue = [];
     let isPlaying = false;
     let playInterval = null;
+    let nextPlayTime = 0;
 
     // Terminal Logger
     function log(message, type = 'info') {
@@ -541,7 +542,7 @@
     }
 
     // Start Recording and Streaming
-    async function startAudioStreaming() {
+    async function startAudioStreaming(provider = 'openai') {
       try {
         log('Requesting microphone permissions...', 'info');
         microphoneStream = await navigator.mediaDevices.getUserMedia({
@@ -552,14 +553,15 @@
           }
         });
         
-        // Use native browser resampling to 24kHz directly
-        audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-        log(`Microphone captured. AudioContext native sample rate: ${audioContext.sampleRate}Hz`, 'info');
+        // Use native browser resampling based on the provider
+        const targetRate = provider === 'gemini' ? 16000 : 24000;
+        audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: targetRate });
+        log(`Microphone captured. AudioContext native sample rate: ${audioContext.sampleRate}Hz (Provider: ${provider})`, 'info');
 
         const source = audioContext.createMediaStreamSource(microphoneStream);
         
-        // Buffer size 2048 (more responsive than 4096)
-        processorNode = audioContext.createScriptProcessor(2048, 1, 1);
+        // Buffer size 1024 (extremely responsive, half the latency of 2048)
+        processorNode = audioContext.createScriptProcessor(1024, 1, 1);
         source.connect(processorNode);
         processorNode.connect(audioContext.destination);
 
@@ -570,7 +572,7 @@
 
           const inputData = e.inputBuffer.getChannelData(0);
           
-          // Native rate is 24kHz, so we just convert float to Int16 PCM16 directly
+          // Native rate matches targetRate, so we just convert float to Int16 PCM16 directly
           const pcm16Buffer = new ArrayBuffer(inputData.length * 2);
           const pcm16View = new DataView(pcm16Buffer);
 
@@ -595,57 +597,16 @@
           });
         };
 
-        log('Microphone audio stream active - PCM16 at 24kHz.', 'success');
+        log(`Microphone audio stream active - PCM16 at ${targetRate}Hz.`, 'success');
         
-        // Setup Audio Playback loops
-        startAudioPlayback();
+        // Web Audio Context timeline scheduling handles playback on 'audio-out' events
       } catch (err) {
         log(`Failed to initiate audio streaming: ${err.message}`, 'error');
         hangUpCall();
       }
     }
 
-    // Queue and play response audio chunks (PCM16 at 24kHz)
-    async function startAudioPlayback() {
-      isPlaying = true;
-      
-      playInterval = setInterval(async () => {
-        if (!audioContext) return;
-        
-        if (audioQueue.length === 0) {
-          statusOrb.classList.remove('speaking');
-          return;
-        }
 
-        // Ensure audio context is active
-        if (audioContext.state === 'suspended') {
-          await audioContext.resume();
-        }
-
-        statusOrb.classList.add('speaking');
-        
-        const pcm16Bytes = audioQueue.shift();
-        const numSamples = Math.floor(pcm16Bytes.length / 2);
-        if (numSamples === 0) return;
-        
-        const pcmFloatArray = new Float32Array(numSamples);
-        const dataView = new DataView(pcm16Bytes.buffer, pcm16Bytes.byteOffset, pcm16Bytes.byteLength);
-        
-        for (let i = 0; i < numSamples; i++) {
-          const int16 = dataView.getInt16(i * 2, true); // little-endian
-          pcmFloatArray[i] = int16 / 32768;
-        }
-
-        // Create buffer at 24kHz and play
-        const audioBuffer = audioContext.createBuffer(1, pcmFloatArray.length, 24000);
-        audioBuffer.copyToChannel(pcmFloatArray, 0);
-
-        const bufferSource = audioContext.createBufferSource();
-        bufferSource.buffer = audioBuffer;
-        bufferSource.connect(audioContext.destination);
-        bufferSource.start();
-      }, 100); // Tick every 100ms for smoother playback
-    }
 
     // Trigger Sandbox Session
     startBtn.onclick = async () => {
@@ -683,7 +644,8 @@
         }
 
         const wsUrl = data.instruction.url;
-        log(`Webhook registered session successfully! Action: ${data.instruction.action}`, 'success');
+        const providerName = data.instruction.provider || 'openai';
+        log(`Webhook registered session successfully! Action: ${data.instruction.action} (Provider: ${providerName})`, 'success');
         
         // Parse websocket details
         const urlObj = new URL(wsUrl);
@@ -691,14 +653,14 @@
         log(`Extracted callSessionId: ${callSessionId}`, 'info');
 
         // Connect WebSocket
-        connectWebSocket(apiBase, callSessionId);
+        connectWebSocket(apiBase, callSessionId, providerName);
       } catch (err) {
         log(`Failed to initiate sandbox call: ${err.message}`, 'error');
         hangUpCall();
       }
     };
 
-    function connectWebSocket(apiBase, sessionId) {
+    function connectWebSocket(apiBase, sessionId, providerName = 'openai') {
       log(`Connecting to voice gateway stream websocket...`, 'info');
       
       // Initialize socket.io connection
@@ -718,7 +680,7 @@
         statusOrb.className = 'orb';
 
         // Trigger Audio capture
-        startAudioStreaming();
+        startAudioStreaming(providerName);
       });
 
       socket.on('disconnect', () => {
@@ -735,15 +697,50 @@
       let audioPacketCount = 0;
       
       socket.on('audio-out', (data) => {
-        // Queue base64 audio output chunks
+        if (!audioContext) return;
+
+        // Decode base64 audio output chunks
         const binaryString = atob(data.payload);
         const len = binaryString.length;
         const bytes = new Uint8Array(len);
         for (let i = 0; i < len; i++) {
           bytes[i] = binaryString.charCodeAt(i);
         }
-        audioQueue.push(bytes);
+
+        const numSamples = Math.floor(bytes.length / 2);
+        if (numSamples === 0) return;
+
+        const pcmFloatArray = new Float32Array(numSamples);
+        const dataView = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         
+        for (let i = 0; i < numSamples; i++) {
+          const int16 = dataView.getInt16(i * 2, true); // little-endian
+          pcmFloatArray[i] = int16 / 32768;
+        }
+
+        // Create buffer at 24kHz (Gemini/OpenAI both respond in PCM16 24kHz) and play
+        const audioBuffer = audioContext.createBuffer(1, pcmFloatArray.length, 24000);
+        audioBuffer.copyToChannel(pcmFloatArray, 0);
+
+        const bufferSource = audioContext.createBufferSource();
+        bufferSource.buffer = audioBuffer;
+        bufferSource.connect(audioContext.destination);
+
+        const currentTime = audioContext.currentTime;
+        if (nextPlayTime < currentTime) {
+          nextPlayTime = currentTime;
+        }
+
+        statusOrb.classList.add('speaking');
+        bufferSource.start(nextPlayTime);
+        nextPlayTime += audioBuffer.duration;
+
+        bufferSource.onended = () => {
+          if (audioContext && audioContext.currentTime >= nextPlayTime - 0.05) {
+            statusOrb.classList.remove('speaking');
+          }
+        };
+
         audioPacketCount++;
         if (audioPacketCount % 20 === 1) {
           log(`Receiving synthetic audio stream from AI... (${audioPacketCount} packets)`, 'success');
@@ -793,6 +790,7 @@
       }
       audioQueue = [];
       isPlaying = false;
+      nextPlayTime = 0;
 
       // Disconnect WS
       if (socket) {

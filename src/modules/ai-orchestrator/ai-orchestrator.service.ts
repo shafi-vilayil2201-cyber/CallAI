@@ -1,6 +1,7 @@
 import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { AiProvider } from './interfaces/ai-provider.interface';
 import { OpenAiRealtimeProvider } from './providers/openai-realtime.provider';
+import { GeminiLiveProvider } from './providers/gemini-live.provider';
 import { StructuredLogger } from '../../common/logger/logger.service';
 
 @Injectable()
@@ -10,11 +11,14 @@ export class AiOrchestratorService {
   constructor(
     private readonly logger: StructuredLogger,
     @Inject(forwardRef(() => OpenAiRealtimeProvider))
-    private readonly openAiRealtimeProvider: OpenAiRealtimeProvider
+    private readonly openAiRealtimeProvider: OpenAiRealtimeProvider,
+    @Inject(forwardRef(() => GeminiLiveProvider))
+    private readonly geminiLiveProvider: GeminiLiveProvider
   ) {
     this.logger.setContext('AiOrchestratorService');
     // Register active AI provider instances
     this.providers.set('openai', this.openAiRealtimeProvider);
+    this.providers.set('gemini', this.geminiLiveProvider);
   }
 
   /**
