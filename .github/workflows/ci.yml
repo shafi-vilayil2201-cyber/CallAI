@@ -77,7 +77,7 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Run unit tests
-        run: pnpm test -- --passWithNoTests
+        run: pnpm test
 
       - name: Build production bundle
         run: pnpm build
