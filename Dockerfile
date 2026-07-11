@@ -42,7 +42,7 @@ COPY --from=builder --chown=callai:callai /app/dist ./dist
 COPY --from=builder --chown=callai:callai /app/node_modules ./node_modules
 COPY --from=builder --chown=callai:callai /app/prisma ./prisma
 COPY --from=builder --chown=callai:callai /app/package.json ./
-COPY --from=builder --chown=callai:callai /app/public ./public
+COPY --chown=callai:callai public ./public
 
 # Switch to non-root user
 USER callai
