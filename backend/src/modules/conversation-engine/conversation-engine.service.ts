@@ -74,11 +74,27 @@ export class ConversationEngineService {
 
     const { organizationId, assistantId, assistant } = callSession;
 
-    // 2. Fetch conversational context memory (Retrieve previous call summaries if any)
-    const longTermContext = await this.memoryService.retrieveLongTermContext(
-      organizationId,
-      callSession.callerNumber,
-    );
+    // 2. Fetch conversational context memory (Retrieve caller profile and facts)
+    const callerContext = await this.memoryService.loadUserContext(callSession.callerNumber);
+    
+    // Observability: record memory injection size
+    this.observability.recordMemoriesInjected(callerContext.memories.length);
+
+    const memoryLines = callerContext.memories
+      .map(m => `- ${m.key}: ${m.value}`)
+      .join('\n');
+
+    const callerInfoBlock = `
+[CALLER PROFILE & MEMORY]:
+- Name: ${callerContext.name ?? 'Unknown'}
+- Phone Number: ${callerContext.phoneNumber}
+${memoryLines ? `\n[KNOWN PREFERENCES]:\n${memoryLines}` : '- No prior preferences stored.'}
+---
+Instructions:
+- Use memory naturally in conversation when relevant.
+- Do NOT explicitly say "I remember" or "based on your settings".
+- Keep responses conversational.
+`;
 
     // 3. Start latency tracking (non-blocking — allocates in-memory entry + TTL handle)
     if (latencyEnabled) {
@@ -102,8 +118,7 @@ export class ConversationEngineService {
     const finalSystemPrompt = `
 ${basePrompt}
 ---
-[HISTORICAL SUMMARY OF CALLER]:
-${longTermContext || 'First time caller. No historical records.'}
+${callerInfoBlock}
 ---
 Ensure replies are extremely concise and natural for real-time voice conversations. Keep sentences short.${strategyInstruction}
 `;

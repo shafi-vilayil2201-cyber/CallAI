@@ -265,3 +265,38 @@ model AuditLog {
   userAgent String?
   createdAt DateTime @default(now())
 }
+
+model Caller {
+  id            String          @id @default(uuid())
+  phoneNumber   String          @unique
+  name          String?
+  preferences   Json?           @default("{}")
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  memories      CallerMemory[]
+  callLogs      CallerCallLog[]
+}
+
+model CallerMemory {
+  id        String   @id @default(uuid())
+  callerId  String
+  key       String
+  value     String
+  weight    Float    @default(1.0)
+  lastUsed  DateTime @default(now())
+  createdAt DateTime @default(now())
+  caller    Caller   @relation(fields: [callerId], references: [id], onDelete: Cascade)
+
+  @@unique([callerId, key])
+  @@index([callerId])
+}
+
+model CallerCallLog {
+  id            String   @id @default(uuid())
+  callerId      String
+  summary       String?  @db.Text
+  createdAt     DateTime @default(now())
+  caller        Caller   @relation(fields: [callerId], references: [id], onDelete: Cascade)
+
+  @@index([callerId])
+}

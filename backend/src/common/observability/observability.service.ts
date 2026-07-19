@@ -12,6 +12,10 @@ export class ObservabilityService {
   private readonly audioChunksProcessedCounter;
   private readonly latencyHistogram;
   private readonly tokenUsageCounter;
+  private readonly memoryHitsCounter;
+  private readonly memoryMissesCounter;
+  private readonly memoriesExtractedCounter;
+  private readonly memoriesInjectedCounter;
 
   constructor(private readonly logger: StructuredLogger) {
     this.logger.setContext('Observability');
@@ -38,6 +42,39 @@ export class ObservabilityService {
     this.tokenUsageCounter = this.meter.createCounter('callai_ai_tokens_total', {
       description: 'Count of tokens utilized by AI model execution',
     });
+
+    this.memoryHitsCounter = this.meter.createCounter('callai_memory_hits_total', {
+      description: 'Count of memory cache hits',
+    });
+
+    this.memoryMissesCounter = this.meter.createCounter('callai_memory_misses_total', {
+      description: 'Count of memory cache misses',
+    });
+
+    this.memoriesExtractedCounter = this.meter.createCounter('callai_memories_extracted_total', {
+      description: 'Total number of structured facts/memories extracted',
+    });
+
+    this.memoriesInjectedCounter = this.meter.createCounter('callai_memories_injected_total', {
+      description: 'Total number of memories injected into prompts',
+    });
+  }
+
+  // Memory indicators
+  recordMemoryHit() {
+    this.memoryHitsCounter.add(1);
+  }
+
+  recordMemoryMiss() {
+    this.memoryMissesCounter.add(1);
+  }
+
+  recordMemoriesExtracted(count: number) {
+    this.memoriesExtractedCounter.add(count);
+  }
+
+  recordMemoriesInjected(count: number) {
+    this.memoriesInjectedCounter.add(count);
   }
 
   // Active call counters

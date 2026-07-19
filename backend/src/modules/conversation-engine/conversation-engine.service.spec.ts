@@ -49,6 +49,7 @@ describe('ConversationEngineService', () => {
 
   const mockObservability = {
     recordTokenUsage: jest.fn(),
+    recordMemoriesInjected: jest.fn(),
   };
 
   const mockAiProvider = {
@@ -63,6 +64,13 @@ describe('ConversationEngineService', () => {
   };
 
   const mockMemoryService = {
+    loadUserContext: jest.fn().mockResolvedValue({
+      id: 'caller_123',
+      phoneNumber: '+919999999999',
+      name: 'John Doe',
+      preferences: {},
+      memories: [{ key: 'favorite_food', value: 'pizza' }],
+    }),
     retrieveLongTermContext: jest.fn().mockResolvedValue('Spoke to customer yesterday.'),
   };
 
@@ -157,13 +165,13 @@ describe('ConversationEngineService', () => {
       },
     });
 
-    expect(memoryService.retrieveLongTermContext).toHaveBeenCalledWith('org_123', '+919999999999');
+    expect(memoryService.loadUserContext).toHaveBeenCalledWith('+919999999999');
     expect(toolEngineService.getRegisteredTools).toHaveBeenCalled();
     expect(aiOrchestrator.resolveProvider).toHaveBeenCalledWith('openai');
 
     expect(mockAiProvider.connect).toHaveBeenCalledWith(
       expect.objectContaining({
-        systemInstruction: expect.stringContaining('Spoke to customer yesterday.'),
+        systemInstruction: expect.stringContaining('John Doe'),
         voiceId: 'alloy',
         model: 'gpt-4o-realtime',
         language: 'en-US',
