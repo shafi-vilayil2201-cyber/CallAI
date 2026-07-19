@@ -1,3 +1,7 @@
+packages:
+  - 'backend'
+  - 'frontend'
+
 allowBuilds:
   '@nestjs/core': false
   '@prisma/client': false

@@ -36,7 +36,7 @@ services:
   # ─── CallAI Application ────────────────────────────────────────
   app:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
     container_name: callai-app
     ports:
