@@ -97,4 +97,4 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build Docker image
-        run: docker build -t callai:ci-${{ github.sha }} .
+        run: docker build -f backend/Dockerfile -t callai:ci-${{ github.sha }} backend
